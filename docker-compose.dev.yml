@@ -1,0 +1,52 @@
+# =============================================================================
+# Docker Compose - GED-PEI Development Override
+# =============================================================================
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#
+# Ce fichier surcharge la configuration pour le développement local
+
+version: '3.8'
+
+services:
+  # ---------------------------------------------------------------------------
+  # Frontend - Development mode with hot reload
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./frontend/src:/app/src:ro
+      - ./frontend/public:/app/public:ro
+    ports:
+      - "3002:3000"
+    environment:
+      - VITE_API_URL=http://localhost:8082/api
+
+  # ---------------------------------------------------------------------------
+  # Backend - Development mode with H2
+  # ---------------------------------------------------------------------------
+  backend:
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - SPRING_DATASOURCE_URL=jdbc:h2:file:/app/data/gedpei;MODE=PostgreSQL
+      - SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.h2.Driver
+      - SPRING_H2_CONSOLE_ENABLED=true
+      - SPRING_H2_CONSOLE_PATH=/h2-console
+    volumes:
+      - backend-h2-data:/app/data
+    depends_on: []  # Pas besoin de PostgreSQL en dev
+
+  # ---------------------------------------------------------------------------
+  # Désactiver PostgreSQL en développement
+  # ---------------------------------------------------------------------------
+  db:
+    profiles:
+      - prod-only
+
+# -----------------------------------------------------------------------------
+# Volumes additionnels pour le développement
+# -----------------------------------------------------------------------------
+volumes:
+  backend-h2-data:
+    driver: local

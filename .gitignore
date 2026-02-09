@@ -1,0 +1,84 @@
+# =============================================================================
+# .gitignore - GED-PEI Web Application
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Environment
+# -----------------------------------------------------------------------------
+.env
+.env.local
+.env.*.local
+
+# -----------------------------------------------------------------------------
+# Backend - Java/Maven
+# -----------------------------------------------------------------------------
+backend/target/
+backend/*.jar
+backend/*.war
+backend/*.class
+backend/.mvn/wrapper/maven-wrapper.jar
+backend/mvnw
+backend/mvnw.cmd
+
+# IDE
+backend/.idea/
+backend/*.iml
+backend/.vscode/
+backend/.settings/
+backend/.project
+backend/.classpath
+
+# Logs
+backend/logs/
+backend/*.log
+
+# Uploads
+backend/uploads/
+backend/exports/
+
+# H2 Database
+backend/*.db
+backend/data/
+
+# -----------------------------------------------------------------------------
+# Frontend - Node/React
+# -----------------------------------------------------------------------------
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.cache/
+
+# Logs
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+
+# IDE
+frontend/.idea/
+frontend/.vscode/
+
+# Testing
+frontend/coverage/
+
+# -----------------------------------------------------------------------------
+# Docker
+# -----------------------------------------------------------------------------
+*.log
+docker-compose.override.yml
+
+# -----------------------------------------------------------------------------
+# OS
+# -----------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# -----------------------------------------------------------------------------
+# Secrets
+# -----------------------------------------------------------------------------
+*.pem
+*.key
+secrets/
+nul

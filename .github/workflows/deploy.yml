@@ -1,0 +1,74 @@
+# =============================================================================
+# GitHub Actions - Deploy GED-PEI to 51.91.204.155
+# =============================================================================
+name: Deploy GED-PEI
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 51.91.204.155
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          script_stop: true
+          envs: DB_PASSWORD,JWT_SECRET
+          script: |
+            set -e
+
+            APP_DIR="/opt/ged-pei"
+
+            # Create app directory if first deploy
+            mkdir -p $APP_DIR
+
+            # Clone or pull latest code
+            if [ -d "$APP_DIR/.git" ]; then
+              echo ">>> Pulling latest changes..."
+              cd $APP_DIR
+              git fetch origin master
+              git reset --hard origin/master
+            else
+              echo ">>> First deploy - cloning repository..."
+              rm -rf $APP_DIR
+              git clone https://github.com/wissem007/GED8PEI.git $APP_DIR
+              cd $APP_DIR
+            fi
+
+            # Create .env file
+            echo "DB_PASSWORD=${DB_PASSWORD}" > $APP_DIR/.env
+            echo "JWT_SECRET=${JWT_SECRET}" >> $APP_DIR/.env
+            echo "COMPOSE_PROJECT_NAME=gedpei" >> $APP_DIR/.env
+
+            # Build and deploy with Docker Compose
+            echo ">>> Building and deploying containers..."
+            cd $APP_DIR
+            docker compose down --remove-orphans 2>/dev/null || true
+            docker compose build --no-cache
+            docker compose up -d
+
+            # Wait for services to be healthy
+            echo ">>> Waiting for services to start..."
+            sleep 30
+
+            # Check services status
+            echo ">>> Services status:"
+            docker compose ps
+
+            echo ">>> Deployment complete!"
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}

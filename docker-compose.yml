@@ -1,0 +1,115 @@
+# =============================================================================
+# Docker Compose - GED-PEI Web Application
+# =============================================================================
+# Usage:
+#   Development: docker-compose up -d
+#   Production:  docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Services:
+#   - frontend: React application (Nginx)
+#   - backend: Spring Boot API
+#   - db: PostgreSQL database
+
+version: '3.8'
+
+services:
+  # ---------------------------------------------------------------------------
+  # Frontend - React + Nginx
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: /api
+    container_name: gedpei-frontend
+    ports:
+      - "3080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - gedpei-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ---------------------------------------------------------------------------
+  # Backend - Spring Boot API
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: gedpei-backend
+    ports:
+      - "8082:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://db:5432/gedpei
+      - SPRING_DATASOURCE_USERNAME=gedpei
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD:-gedpei_secure_password}
+      - JWT_SECRET=${JWT_SECRET:-mySecretKeyForJWTTokenGeneration2024!VeryLongAndSecure}
+      - JAVA_OPTS=-Xms256m -Xmx512m
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - backend-uploads:/app/uploads
+      - backend-exports:/app/exports
+      - backend-logs:/app/logs
+    networks:
+      - gedpei-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+
+  # ---------------------------------------------------------------------------
+  # Database - PostgreSQL
+  # ---------------------------------------------------------------------------
+  db:
+    image: postgres:15-alpine
+    container_name: gedpei-db
+    environment:
+      - POSTGRES_DB=gedpei
+      - POSTGRES_USER=gedpei
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-gedpei_secure_password}
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d:ro
+    networks:
+      - gedpei-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gedpei -d gedpei"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+# -----------------------------------------------------------------------------
+# Networks
+# -----------------------------------------------------------------------------
+networks:
+  gedpei-network:
+    driver: bridge
+
+# -----------------------------------------------------------------------------
+# Volumes
+# -----------------------------------------------------------------------------
+volumes:
+  postgres-data:
+    driver: local
+  backend-uploads:
+    driver: local
+  backend-exports:
+    driver: local
+  backend-logs:
+    driver: local
