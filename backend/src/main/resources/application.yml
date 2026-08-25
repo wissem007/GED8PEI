@@ -37,6 +37,16 @@ logging:
     com.edf.gedpei: DEBUG
     org.springframework.security: INFO
 
+# Actuator : seul /actuator/health est expose (sonde Docker)
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
 # OpenAPI
 springdoc:
   api-docs:

@@ -32,7 +32,7 @@ services:
       - gedpei-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:80/health"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -49,6 +49,9 @@ services:
       - "8082:8080"
     environment:
       - SPRING_PROFILES_ACTIVE=prod
+      # application.yml fixe server.port a 8082 : on aligne sur le port
+      # publie par l'image (EXPOSE 8080, healthcheck, mapping 8082:8080).
+      - SERVER_PORT=8080
       - SPRING_DATASOURCE_URL=jdbc:postgresql://db:5432/gedpei
       - SPRING_DATASOURCE_USERNAME=gedpei
       - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD:-gedpei_secure_password}
