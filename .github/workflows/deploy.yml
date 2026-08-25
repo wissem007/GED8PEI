@@ -26,6 +26,9 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
           script_stop: true
+          # Marge large : le build complet (Maven + npm ci) peut depasser
+          # les 10 min de timeout par defaut de l action.
+          command_timeout: 20m
           envs: DB_PASSWORD,JWT_SECRET
           script: |
             set -e
@@ -57,7 +60,10 @@ jobs:
             echo ">>> Building and deploying containers..."
             cd $APP_DIR
             docker compose down --remove-orphans 2>/dev/null || true
-            docker compose build --no-cache
+            # Cache conserve : seules les couches touchees sont reconstruites.
+            # Un deploiement passe ainsi de ~8 min a moins d une minute quand
+            # seules les sources changent.
+            docker compose build
             docker compose up -d
 
             # Wait for services to be healthy
