@@ -12,7 +12,6 @@ WORKDIR /build
 
 # Copier les fichiers de configuration Maven
 COPY pom.xml .
-COPY .mvn .mvn 2>/dev/null || true
 
 # Télécharger les dépendances (layer cache)
 RUN mvn dependency:go-offline -B
