@@ -4,20 +4,14 @@ import com.edf.gedpei.dto.ServerSoftwareObsolescenceDTO;
 import com.edf.gedpei.entity.ServerSoftwareObsolescence;
 import com.edf.gedpei.entity.ServerSoftwareObsolescence.ObsolescenceStatus;
 import com.edf.gedpei.repository.ServerSoftwareObsolescenceRepository;
-import com.opencsv.CSVParser;
-import com.opencsv.CSVParserBuilder;
-import com.opencsv.CSVReader;
-import com.opencsv.CSVReaderBuilder;
+import com.edf.gedpei.util.SpreadsheetReader;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -29,7 +23,26 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ServerSoftwareObsolescenceService {
 
+    private static final int HEADER_SEARCH_DEPTH = 30;
+
+    private static final String COL_ENVIRONMENT = "ENVIRONNEMENT";
+    private static final String COL_INSTANCE = "INSTANCE";
+    private static final String COL_SERVER = "SERVEUR";
+    private static final String COL_SERVICE_NAME = "NOM SERVICE";
+    private static final String COL_STATUS = "CSR STATUT VERSION PACKAGE";
+    private static final String COL_SOFTWARE = "INVENTIV NOM COMPOSANT";
+    private static final String COL_VERSION = "CSR VERSION PACKAGE";
+    private static final String COL_SUPPORT_END = "DATE FIN SUPPORT";
+    private static final String COL_SUPPORT_END_ALT = "DATE DE FIN DE SUPPORT";
+    private static final String COL_OS_TARGET = "OS CIBLE CSR VERSION PACKAGE";
+    private static final String COL_OS_ACTUAL_SOLUTION = "OS ACTUEL SOLUTION CIBLE CSR VERSION PACKAGE";
+    private static final String COL_OS_TARGET_SOLUTION = "OS CIBLE SOLUTION CIBLE CSR VERSION PACKAGE";
+
     private final ServerSoftwareObsolescenceRepository repository;
+
+    /** Service retenu dans l'extraction Prevobs, qui couvre tout le SI. */
+    @Value("${gedpei.import.service-filter:GED-PEI}")
+    private String serviceFilter;
 
     /**
      * Recupere toutes les donnees d'obsolescence.
@@ -215,59 +228,172 @@ public class ServerSoftwareObsolescenceService {
         int imported = 0;
         int errors = 0;
         List<String> errorMessages = new ArrayList<>();
+        List<ServerSoftwareObsolescence> entries = new ArrayList<>();
 
-        // Detecte l'encodage
-        Charset charset = detectCharset(file);
-        log.info("Encodage detecte: {}", charset.name());
+        try {
+            List<SpreadsheetReader.Tab> tabs = SpreadsheetReader.read(file);
+            String usedTab = null;
 
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(file.getInputStream(), charset))) {
+            // Un classeur Excel contient plusieurs onglets (DONNEES + TCD divers) :
+            // on retient celui qui produit le plus d'entrees.
+            for (SpreadsheetReader.Tab tab : tabs) {
+                List<ServerSoftwareObsolescence> parsed = parseTab(tab.rows());
+                if (parsed.size() > entries.size()) {
+                    entries = parsed;
+                    usedTab = tab.name();
+                }
+            }
 
-            // Detecte le delimiteur
-            String firstLine = reader.readLine();
-            char delimiter = detectDelimiter(firstLine);
-            log.info("Delimiteur detecte: '{}'", delimiter);
+            if (entries.isEmpty()) {
+                errorMessages.add("Aucune donnee d'obsolescence reconnue. Attendu : un onglet a plat "
+                        + "(colonnes SERVEUR et INVENTIV NOM COMPOSANT) ou un TCD hierarchique "
+                        + "(en-tete ENVIRONNEMENT / INSTANCE / SERVEUR).");
+                return buildResult(imported, errors, errorMessages);
+            }
 
-            // Lit tout le fichier
-            try (BufferedReader fullReader = new BufferedReader(
-                    new InputStreamReader(file.getInputStream(), charset))) {
+            log.info("Onglet retenu: '{}' -> {} entrees", usedTab, entries.size());
 
-                CSVParser csvParser = new CSVParserBuilder()
-                        .withSeparator(delimiter)
-                        .build();
-
-                CSVReader csvReader = new CSVReaderBuilder(fullReader)
-                        .withCSVParser(csvParser)
-                        .build();
-
-                List<String[]> allRows = csvReader.readAll();
-
-                // Parse le fichier hierarchique
-                List<ServerSoftwareObsolescence> entries = parseHierarchicalCsv(allRows);
-
-                // Sauvegarde en base
-                for (ServerSoftwareObsolescence entry : entries) {
-                    try {
-                        repository.save(entry);
-                        imported++;
-                    } catch (Exception e) {
-                        errors++;
-                        errorMessages.add("Erreur sauvegarde: " + e.getMessage());
-                    }
+            for (ServerSoftwareObsolescence entry : entries) {
+                try {
+                    repository.save(entry);
+                    imported++;
+                } catch (Exception e) {
+                    errors++;
+                    errorMessages.add("Erreur sauvegarde: " + e.getMessage());
                 }
             }
         } catch (Exception e) {
-            log.error("Erreur lors de l'import CSV", e);
+            log.error("Erreur lors de l'import", e);
+            errors++;
             errorMessages.add("Erreur globale: " + e.getMessage());
         }
 
+        log.info("Import termine: {} importes, {} erreurs", imported, errors);
+        return buildResult(imported, errors, errorMessages);
+    }
+
+    private Map<String, Object> buildResult(int imported, int errors, List<String> errorMessages) {
         Map<String, Object> result = new HashMap<>();
         result.put("imported", imported);
         result.put("errors", errors);
         result.put("errorMessages", errorMessages);
-
-        log.info("Import termine: {} importes, {} erreurs", imported, errors);
         return result;
+    }
+
+    /**
+     * Reconnait la forme de l'onglet et delegue au parseur adapte.
+     *
+     * <p>Deux formes circulent : l'extraction Prevobs a plat (onglet DONNEES, une ligne par
+     * couple serveur/composant) et le TCD hierarchique prepare sous Excel. Le TCD se reconnait
+     * a ses colonnes ENVIRONNEMENT / INSTANCE / SERVEUR en tete de ligne.</p>
+     */
+    private List<ServerSoftwareObsolescence> parseTab(List<String[]> rows) {
+        for (int i = 0; i < Math.min(rows.size(), HEADER_SEARCH_DEPTH); i++) {
+            Map<String, Integer> headers = indexHeaders(rows.get(i));
+            if (headers.isEmpty()) continue;
+
+            Integer environment = headers.get(COL_ENVIRONMENT);
+            Integer server = headers.get(COL_SERVER);
+            boolean hierarchical = environment != null && environment == 0
+                    && server != null && server == 2;
+
+            if (hierarchical) {
+                return parseHierarchicalCsv(rows);
+            }
+            if (headers.containsKey(COL_SOFTWARE) && server != null) {
+                return parseFlatRows(rows, i, headers);
+            }
+        }
+        return new ArrayList<>();
+    }
+
+    /**
+     * Parse l'extraction Prevobs a plat (onglet DONNEES) : une ligne par couple
+     * serveur/composant, filtree sur le service GED-PEI.
+     */
+    private List<ServerSoftwareObsolescence> parseFlatRows(List<String[]> rows, int headerRowIndex,
+                                                           Map<String, Integer> headers) {
+        List<ServerSoftwareObsolescence> entries = new ArrayList<>();
+
+        int softwareIndex = headers.get(COL_SOFTWARE);
+        int serverIndex = headers.get(COL_SERVER);
+        Integer serviceIndex = headers.get(COL_SERVICE_NAME);
+        Integer environmentIndex = headers.get(COL_ENVIRONMENT);
+        Integer instanceIndex = headers.get(COL_INSTANCE);
+        Integer statusIndex = headers.get(COL_STATUS);
+        Integer versionIndex = headers.get(COL_VERSION);
+        Integer supportEndIndex = firstPresent(headers, COL_SUPPORT_END, COL_SUPPORT_END_ALT);
+        Integer osTargetIndex = headers.get(COL_OS_TARGET);
+        Integer osActualSolutionIndex = headers.get(COL_OS_ACTUAL_SOLUTION);
+        Integer osTargetSolutionIndex = headers.get(COL_OS_TARGET_SOLUTION);
+
+        String filter = SpreadsheetReader.normalizeHeader(serviceFilter);
+        int filtered = 0;
+
+        for (int i = headerRowIndex + 1; i < rows.size(); i++) {
+            String[] row = rows.get(i);
+            if (SpreadsheetReader.isBlank(row)) continue;
+
+            // L'extraction Prevobs couvre tout le SI : on ne garde que le service GED-PEI.
+            if (serviceIndex != null && !filter.isEmpty()) {
+                String service = SpreadsheetReader.normalizeHeader(
+                        SpreadsheetReader.cell(row, serviceIndex));
+                if (!service.contains(filter)) {
+                    filtered++;
+                    continue;
+                }
+            }
+
+            String software = SpreadsheetReader.cell(row, softwareIndex);
+            String server = SpreadsheetReader.cell(row, serverIndex);
+            if (software == null || server == null) continue;
+
+            String status = value(row, statusIndex);
+            entries.add(ServerSoftwareObsolescence.builder()
+                    .environment(value(row, environmentIndex))
+                    .instance(value(row, instanceIndex))
+                    .serverName(server)
+                    .status(status != null ? ObsolescenceStatus.fromString(status) : ObsolescenceStatus.TOLEREE)
+                    .softwareName(software)
+                    .currentVersion(value(row, versionIndex))
+                    .supportEndDate(value(row, supportEndIndex))
+                    .osTarget(value(row, osTargetIndex))
+                    .osActualTargetVersion(value(row, osActualSolutionIndex))
+                    .osTargetSolutionVersion(value(row, osTargetSolutionIndex))
+                    .build());
+        }
+
+        log.info("Format a plat: {} entrees retenues, {} lignes hors service '{}'",
+                entries.size(), filtered, serviceFilter);
+        return entries;
+    }
+
+    /**
+     * Indexe les en-tetes d'une ligne (normalises) vers leur position.
+     */
+    private Map<String, Integer> indexHeaders(String[] row) {
+        Map<String, Integer> headers = new HashMap<>();
+        if (row == null) return headers;
+
+        for (int i = 0; i < row.length; i++) {
+            String header = SpreadsheetReader.normalizeHeader(row[i]);
+            if (!header.isEmpty()) {
+                headers.putIfAbsent(header, i);
+            }
+        }
+        return headers;
+    }
+
+    private Integer firstPresent(Map<String, Integer> headers, String... names) {
+        for (String name : names) {
+            Integer index = headers.get(name);
+            if (index != null) return index;
+        }
+        return null;
+    }
+
+    private String value(String[] row, Integer index) {
+        return index == null ? null : SpreadsheetReader.cell(row, index);
     }
 
     /**
@@ -378,29 +504,5 @@ public class ServerSoftwareObsolescenceService {
         // Nettoie les caracteres speciaux d'encodage
         value = value.replace("�", "e").replace("", "");
         return value.isEmpty() ? null : value;
-    }
-
-    private Charset detectCharset(MultipartFile file) {
-        try {
-            byte[] bytes = file.getInputStream().readNBytes(1000);
-            String content = new String(bytes, StandardCharsets.UTF_8);
-            if (content.contains("\ufffd") || content.contains("�")) {
-                return Charset.forName("windows-1252");
-            }
-            return StandardCharsets.UTF_8;
-        } catch (Exception e) {
-            return StandardCharsets.UTF_8;
-        }
-    }
-
-    private char detectDelimiter(String line) {
-        if (line == null) return ';';
-        int semicolons = line.length() - line.replace(";", "").length();
-        int commas = line.length() - line.replace(",", "").length();
-        int tabs = line.length() - line.replace("\t", "").length();
-
-        if (tabs > semicolons && tabs > commas) return '\t';
-        if (commas > semicolons) return ',';
-        return ';';
     }
 }

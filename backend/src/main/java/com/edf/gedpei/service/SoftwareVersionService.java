@@ -4,6 +4,7 @@ import com.edf.gedpei.dto.SoftwareVersionDTO;
 import com.edf.gedpei.entity.SoftwareVersion;
 import com.edf.gedpei.entity.SoftwareVersion.VersionStatus;
 import com.edf.gedpei.repository.SoftwareVersionRepository;
+import com.edf.gedpei.util.SpreadsheetReader;
 import com.opencsv.CSVParser;
 import com.opencsv.CSVParserBuilder;
 import com.opencsv.CSVReader;
@@ -31,6 +32,8 @@ import java.util.*;
 @RequiredArgsConstructor
 @Slf4j
 public class SoftwareVersionService {
+
+    private static final int HEADER_SEARCH_DEPTH = 20;
 
     private final SoftwareVersionRepository softwareVersionRepository;
 
@@ -152,83 +155,144 @@ public class SoftwareVersionService {
      * Importe les versions depuis un fichier CSV.
      */
     public Map<String, Object> importFromCsv(MultipartFile file) {
-        int imported = 0;
-        int updated = 0;
-        int errors = 0;
         List<String> errorMessages = new ArrayList<>();
 
-        // Detecte l'encodage (UTF-8 ou Windows-1252)
+        try {
+            List<String[]> rows = readRows(file);
+
+            if (rows == null || rows.isEmpty()) {
+                errorMessages.add("Aucune donnee exploitable. Attendu : une ligne d'en-tete "
+                        + "contenant 'Libelle de la solution' (export Sipedia CSR) ou 'Logiciel'.");
+                return createResult(0, 0, 0, errorMessages);
+            }
+
+            return processRows(rows, errorMessages);
+
+        } catch (Exception e) {
+            log.error("Erreur lors de l'import", e);
+            errorMessages.add("Erreur globale: " + e.getMessage());
+            return createResult(0, 0, 0, errorMessages);
+        }
+    }
+
+    /**
+     * Lit le fichier et renvoie les lignes a partir de l'en-tete.
+     *
+     * <p>Un export Sipedia XLSX contient plusieurs onglets (Liste des solutions, Detail des
+     * versions, Securisation...) : on retient celui qui porte a la fois le libelle de la
+     * solution et une version, c'est-a-dire le detail des versions.</p>
+     */
+    private List<String[]> readRows(MultipartFile file) throws Exception {
+        if (!SpreadsheetReader.isExcel(file)) {
+            List<String[]> rows = readCsvRows(file);
+            int header = findHeaderRow(rows);
+            return header < 0 ? null : rows.subList(header, rows.size());
+        }
+
+        List<String[]> best = null;
+        boolean bestHasVersion = false;
+
+        for (SpreadsheetReader.Tab tab : SpreadsheetReader.read(file)) {
+            int header = findHeaderRow(tab.rows());
+            if (header < 0) continue;
+
+            List<String[]> candidate = tab.rows().subList(header, tab.rows().size());
+            boolean hasVersion = detectColumnMapping(headerIndex(candidate.get(0))).versionIndex != -1;
+
+            // Un onglet portant les versions prime sur le simple catalogue des solutions.
+            if (best == null || (hasVersion && !bestHasVersion)
+                    || (hasVersion == bestHasVersion && candidate.size() > best.size())) {
+                best = candidate;
+                bestHasVersion = hasVersion;
+                log.info("Onglet retenu: '{}' ({} lignes, versions: {})",
+                        tab.name(), candidate.size() - 1, hasVersion);
+            }
+        }
+
+        return best;
+    }
+
+    private List<String[]> readCsvRows(MultipartFile file) throws Exception {
         java.nio.charset.Charset charset = detectCharset(file);
         log.info("Encodage detecte: {}", charset.name());
 
+        char delimiter;
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(file.getInputStream(), charset))) {
+            delimiter = detectDelimiter(reader.readLine());
+        }
 
-            // Detecte le delimiteur
-            String firstLine = reader.readLine();
-            char delimiter = detectDelimiter(firstLine);
-
-            // Reconstruit le reader avec le fichier complet
-            try (BufferedReader fullReader = new BufferedReader(
-                    new InputStreamReader(file.getInputStream(), charset))) {
-
-                CSVParser csvParser = new CSVParserBuilder()
-                        .withSeparator(delimiter)
-                        .build();
-
-                CSVReader csvReader = new CSVReaderBuilder(fullReader)
-                        .withCSVParser(csvParser)
-                        .build();
-
-                // Lecture des en-tetes
-                String[] headers = csvReader.readNext();
-                if (headers == null) {
-                    errorMessages.add("Fichier CSV vide");
-                    return createResult(imported, updated, errors, errorMessages);
-                }
-
-                Map<String, Integer> headerMap = new HashMap<>();
-                for (int i = 0; i < headers.length; i++) {
-                    headerMap.put(headers[i].trim(), i);
-                }
-
-                log.info("En-tetes CSV detectes: {}", headerMap.keySet());
-
-                // Mappe les colonnes
-                ColumnMapping mapping = detectColumnMapping(headerMap);
-
-                String[] record;
-                int lineNum = 1;
-                while ((record = csvReader.readNext()) != null) {
-                    lineNum++;
-                    try {
-                        SoftwareVersion version = parseRecord(record, mapping);
-                        if (version != null && version.getSoftwareName() != null &&
-                            !version.getSoftwareName().isBlank()) {
-
-                            Optional<SoftwareVersion> existing = softwareVersionRepository
-                                    .findBySoftwareNameIgnoreCaseAndVersionIgnoreCase(
-                                            version.getSoftwareName(), version.getVersion());
-
-                            if (existing.isPresent()) {
-                                updateEntity(existing.get(), version);
-                                softwareVersionRepository.save(existing.get());
-                                updated++;
-                            } else {
-                                softwareVersionRepository.save(version);
-                                imported++;
-                            }
-                        }
-                    } catch (Exception e) {
-                        errors++;
-                        errorMessages.add("Ligne " + lineNum + ": " + e.getMessage());
-                        log.warn("Erreur import ligne {}: {}", lineNum, e.getMessage());
-                    }
-                }
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(file.getInputStream(), charset))) {
+            CSVParser csvParser = new CSVParserBuilder().withSeparator(delimiter).build();
+            try (CSVReader csvReader = new CSVReaderBuilder(reader).withCSVParser(csvParser).build()) {
+                return csvReader.readAll();
             }
-        } catch (Exception e) {
-            log.error("Erreur lors de l'import CSV", e);
-            errorMessages.add("Erreur globale: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Cherche la ligne d'en-tete : la premiere qui permet d'identifier le nom du logiciel.
+     */
+    private int findHeaderRow(List<String[]> rows) {
+        for (int i = 0; i < Math.min(rows.size(), HEADER_SEARCH_DEPTH); i++) {
+            if (detectColumnMapping(headerIndex(rows.get(i))).softwareNameIndex != -1) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private Map<String, Integer> headerIndex(String[] headers) {
+        Map<String, Integer> headerMap = new HashMap<>();
+        if (headers == null) return headerMap;
+
+        for (int i = 0; i < headers.length; i++) {
+            if (headers[i] != null && !headers[i].isBlank()) {
+                headerMap.putIfAbsent(headers[i].trim(), i);
+            }
+        }
+        return headerMap;
+    }
+
+    private Map<String, Object> processRows(List<String[]> rows, List<String> errorMessages) {
+        int imported = 0;
+        int updated = 0;
+        int errors = 0;
+
+        Map<String, Integer> headerMap = headerIndex(rows.get(0));
+        log.info("En-tetes detectes: {}", headerMap.keySet());
+
+        ColumnMapping mapping = detectColumnMapping(headerMap);
+
+        for (int lineNum = 1; lineNum < rows.size(); lineNum++) {
+            String[] record = rows.get(lineNum);
+            if (SpreadsheetReader.isBlank(record)) continue;
+
+            try {
+                SoftwareVersion version = parseRecord(record, mapping);
+                if (version == null || version.getSoftwareName() == null
+                        || version.getSoftwareName().isBlank()) {
+                    continue;
+                }
+
+                Optional<SoftwareVersion> existing = softwareVersionRepository
+                        .findBySoftwareNameIgnoreCaseAndVersionIgnoreCase(
+                                version.getSoftwareName(), version.getVersion());
+
+                if (existing.isPresent()) {
+                    updateEntity(existing.get(), version);
+                    softwareVersionRepository.save(existing.get());
+                    updated++;
+                } else {
+                    softwareVersionRepository.save(version);
+                    imported++;
+                }
+            } catch (Exception e) {
+                errors++;
+                errorMessages.add("Ligne " + (lineNum + 1) + ": " + e.getMessage());
+                log.warn("Erreur import ligne {}: {}", lineNum + 1, e.getMessage());
+            }
         }
 
         return createResult(imported, updated, errors, errorMessages);
