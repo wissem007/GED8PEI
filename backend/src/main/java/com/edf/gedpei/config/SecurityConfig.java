@@ -1,6 +1,7 @@
 package com.edf.gedpei.config;
 
 import com.edf.gedpei.security.JwtAuthenticationFilter;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.context.annotation.Configuration;
@@ -34,7 +35,12 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+
     private final UserDetailsService userDetailsService;
+
+    /** Origines autorisees, surchargeables par GEDPEI_CORS_ALLOWED_ORIGIN_PATTERNS. */
+    @Value("${gedpei.cors.allowed-origin-patterns}")
+    private List<String> allowedOriginPatterns;
 
     public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, @Lazy UserDetailsService userDetailsService) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
@@ -106,15 +112,10 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of(
-                "http://localhost:3000",
-                "http://localhost:3001",
-                "http://localhost:3002",
-                "http://localhost:5173",
-                "http://127.0.0.1:3000",
-                "http://127.0.0.1:3002",
-                "http://127.0.0.1:5173"
-        ));
+        // Chrome envoie un en-tete Origin sur toute requete POST, y compris de meme
+        // origine : une liste limitee a localhost fait echouer les imports en 403
+        // des que l'application est servie derriere un domaine ou une IP.
+        configuration.setAllowedOriginPatterns(allowedOriginPatterns);
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
