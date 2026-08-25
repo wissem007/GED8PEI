@@ -232,6 +232,49 @@ Libelle Solution;Version Roadmap;Liens utiles sur la version package
 AIX;7.3;DeposIT (https://deposit.edf.fr/aix) , Guide Install (https://docs.ibm.com/aix)
 ```
 
+## Fichiers Excel (.xlsx)
+
+Depuis la version courante, les deux imports acceptent directement les classeurs Excel,
+sans conversion prealable. Les exports EDF peuvent donc etre deposes tels quels.
+
+### Choix de l'onglet
+
+Un classeur contient plusieurs onglets ; le service retient automatiquement le bon.
+
+| Import | Onglet retenu | Critere |
+|--------|---------------|---------|
+| `/api/software-versions/import` | `CSR - Detail des versions` | premier onglet portant a la fois le libelle de la solution et une version. Le catalogue `CSR - Liste des solutions` ne sert que de repli (versions a `N/A`) |
+| `/api/server-obsolescence/import` | `DONNEES` | l'onglet produisant le plus d'entrees |
+
+La ligne d'en-tete est cherchee dans les 20 (versions) ou 30 (obsolescence) premieres
+lignes : les lignes de filtres et de titres placees au-dessus sont ignorees.
+
+### Import obsolescence : deux formes acceptees
+
+**Extraction Prevobs a plat** (onglet `DONNEES`, ou export CSV direct depuis Power BI) :
+une ligne par couple serveur/composant. Colonnes lues par leur nom, accents et casse
+indifferents : `SERVEUR`, `ENVIRONNEMENT`, `INSTANCE`, `CSR STATUT VERSION PACKAGE`,
+`INVENTIV NOM COMPOSANT`, `CSR VERSION PACKAGE`, `DATE FIN SUPPORT`,
+`OS CIBLE CSR VERSION PACKAGE`.
+
+L'extraction couvre tout le SI : les lignes sont filtrees sur la colonne `NOM SERVICE`.
+
+```yaml
+gedpei:
+  import:
+    service-filter: GED-PEI   # defaut ; vider pour tout importer
+```
+
+**TCD hierarchique** prepare sous Excel : reconnu a ses colonnes `ENVIRONNEMENT` /
+`INSTANCE` / `SERVEUR` en positions 0, 1 et 2. Le statut et le serveur sont portes par
+des lignes de regroupement et s'appliquent aux lignes de composants qui suivent.
+
+> **Attention** : un TCD est souvent livre replie sur quelques serveurs seulement.
+> L'onglet `DONNEES` du meme classeur contient la totalite des lignes, c'est lui qu'il
+> faut privilegier.
+
+---
+
 ## API Endpoint
 
 ### Import CSV
@@ -240,7 +283,7 @@ AIX;7.3;DeposIT (https://deposit.edf.fr/aix) , Guide Install (https://docs.ibm.c
 POST /api/software-versions/import
 Content-Type: multipart/form-data
 
-file: [fichier.csv]
+file: [fichier.csv ou fichier.xlsx]
 ```
 
 ### Reponse
