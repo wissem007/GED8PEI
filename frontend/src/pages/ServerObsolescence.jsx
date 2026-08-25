@@ -370,7 +370,7 @@ function ServerObsolescence() {
             startIcon={<UploadIcon />}
             onClick={() => setImportDialog(true)}
           >
-            Importer CSV
+            Importer
           </Button>
         </Box>
       </Box>
@@ -490,8 +490,11 @@ function ServerObsolescence() {
           <Box sx={{ mt: 2 }}>
             <Alert severity="info" sx={{ mb: 2 }}>
               <Typography variant="body2">
-                <strong>Format attendu :</strong> Export CSV depuis PMT DISCOVR / Obsolescence Prevobs<br />
-                Colonnes: ENVIRONNEMENT, INSTANCE, SERVEUR, CSR STATUT VERSION PACKAGE, INVENTIV NOM COMPOSANT, CSR VERSION PACKAGE, Date de Fin de Support, OS CIBLE...
+                <strong>Fichier attendu :</strong> extraction Prevobs / PMT DISCOVR, en .xlsx ou .csv.<br />
+                Le classeur peut etre depose tel quel : l'onglet DONNEES est detecte automatiquement
+                et filtre sur le service GED-PEI. Un TCD deja mis en forme est egalement accepte.<br />
+                Colonnes lues : SERVEUR, ENVIRONNEMENT, INSTANCE, CSR STATUT VERSION PACKAGE,
+                INVENTIV NOM COMPOSANT, CSR VERSION PACKAGE, DATE FIN SUPPORT, OS CIBLE...
               </Typography>
             </Alert>
 
@@ -510,13 +513,13 @@ function ServerObsolescence() {
             >
               <input
                 type="file"
-                accept=".csv"
+                accept=".csv,.xls,.xlsx"
                 onChange={handleFileChange}
                 style={{ display: 'none' }}
               />
               <UploadIcon sx={{ fontSize: 48, color: 'grey.500', mb: 1 }} />
               <Typography>
-                {importFile ? importFile.name : 'Cliquez pour selectionner un fichier CSV'}
+                {importFile ? importFile.name : 'Cliquez pour selectionner un fichier (.xlsx ou .csv)'}
               </Typography>
             </Box>
 

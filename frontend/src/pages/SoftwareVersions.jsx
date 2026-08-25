@@ -221,7 +221,7 @@ function SoftwareVersions() {
             startIcon={<UploadIcon />}
             onClick={() => setImportDialog(true)}
           >
-            Importer CSV
+            Importer
           </Button>
         </Box>
       </Box>
@@ -375,8 +375,11 @@ function SoftwareVersions() {
           <Box sx={{ mt: 2 }}>
             <Alert severity="info" sx={{ mb: 2 }}>
               <Typography variant="body2">
-                <strong>Format CSV attendu :</strong><br />
-                Logiciel;Version Roadmap;Version Package;Statut;Date MAJ;Fin Support Initial;Fin Support Etendu;Fin Support Cyber
+                <strong>Fichier attendu :</strong> export Sipedia CSR, en .xlsx ou .csv.<br />
+                Le classeur peut etre depose tel quel : l'onglet <em>CSR - Detail des versions</em>
+                est retenu automatiquement.<br />
+                Colonnes lues : Libelle de la solution, Version Roadmap, Statut de la version Roadmap,
+                Version package, dates de fin de support (initial, etendu, cyber).
               </Typography>
             </Alert>
 
@@ -395,13 +398,13 @@ function SoftwareVersions() {
             >
               <input
                 type="file"
-                accept=".csv"
+                accept=".csv,.xls,.xlsx"
                 onChange={handleFileChange}
                 style={{ display: 'none' }}
               />
               <UploadIcon sx={{ fontSize: 48, color: 'grey.500', mb: 1 }} />
               <Typography>
-                {importFile ? importFile.name : 'Cliquez pour selectionner un fichier CSV'}
+                {importFile ? importFile.name : 'Cliquez pour selectionner un fichier (.xlsx ou .csv)'}
               </Typography>
             </Box>
 
