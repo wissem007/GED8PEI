@@ -8,7 +8,7 @@ import {
   Menu as MenuIcon, Dashboard as DashboardIcon, Storage as StorageIcon,
   Upload as UploadIcon, Logout as LogoutIcon, Download as DownloadIcon,
   Inventory as InventoryIcon, Schedule as ScheduleIcon, Warning as WarningIcon,
-  NotificationsActive as AlertsIcon
+  NotificationsActive as AlertsIcon, FactCheck as ComplianceIcon
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import { exportAPI } from '../services/api';
@@ -21,6 +21,7 @@ const menuItems = [
   { text: 'Planning Migrations', icon: <ScheduleIcon />, path: '/migrations' },
   { text: 'Versions Logiciels', icon: <InventoryIcon />, path: '/software-versions' },
   { text: 'Obsolescence Serveur', icon: <WarningIcon />, path: '/server-obsolescence' },
+  { text: 'Conformite CSR', icon: <ComplianceIcon />, path: '/compliance' },
   { text: 'Alertes', icon: <AlertsIcon color="error" />, path: '/alerts' },
   { text: 'Import', icon: <UploadIcon />, path: '/import' },
 ];

@@ -169,4 +169,10 @@ export const migrationsAPI = {
   },
 };
 
+// Compliance API (rapprochement versions installees / referentiel CSR)
+export const complianceAPI = {
+  getAll: () => api.get('/compliance'),
+  getStats: () => api.get('/compliance/stats'),
+};
+
 export default api;

@@ -10,6 +10,7 @@ import ImportPage from './pages/ImportPage';
 import SoftwareVersions from './pages/SoftwareVersions';
 import MigrationPlanning from './pages/MigrationPlanning';
 import ServerObsolescence from './pages/ServerObsolescence';
+import Compliance from './pages/Compliance';
 import Alerts from './pages/Alerts';
 import Login from './pages/Login';
 import { useAuth } from './context/AuthContext';
@@ -38,6 +39,7 @@ function App() {
         <Route path="software-versions" element={<SoftwareVersions />} />
         <Route path="migrations" element={<MigrationPlanning />} />
         <Route path="server-obsolescence" element={<ServerObsolescence />} />
+        <Route path="compliance" element={<Compliance />} />
         <Route path="alerts" element={<Alerts />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

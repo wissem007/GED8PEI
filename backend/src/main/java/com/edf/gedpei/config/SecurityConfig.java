@@ -67,6 +67,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/software-versions/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/migrations/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/server-obsolescence/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/compliance/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/alerts/**").permitAll()
                         // Alertes - actions (temporairement public)
                         .requestMatchers("/api/alerts/generate").permitAll()
