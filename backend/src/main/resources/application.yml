@@ -41,12 +41,8 @@ logging:
 # d'environnement GEDPEI_CORS_ALLOWED_ORIGIN_PATTERNS)
 gedpei:
   cors:
-    allowed-origin-patterns:
-      - http://localhost:*
-      - http://127.0.0.1:*
-      - http://51.91.204.155:*
-      - https://ticketsfoot.com
-      - https://www.ticketsfoot.com
+    # Liste separee par des virgules : @Value ne sait pas lire une sequence YAML.
+    allowed-origin-patterns: http://localhost:*,http://127.0.0.1:*,http://51.91.204.155:*,https://ticketsfoot.com,https://www.ticketsfoot.com
 
 # Actuator : seul /actuator/health est expose (sonde Docker)
 management:

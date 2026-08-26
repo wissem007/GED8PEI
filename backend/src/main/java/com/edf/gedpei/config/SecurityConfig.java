@@ -39,7 +39,7 @@ public class SecurityConfig {
     private final UserDetailsService userDetailsService;
 
     /** Origines autorisees, surchargeables par GEDPEI_CORS_ALLOWED_ORIGIN_PATTERNS. */
-    @Value("${gedpei.cors.allowed-origin-patterns}")
+    @Value("${gedpei.cors.allowed-origin-patterns:http://localhost:*,http://127.0.0.1:*}")
     private List<String> allowedOriginPatterns;
 
     public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, @Lazy UserDetailsService userDetailsService) {
