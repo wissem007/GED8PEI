@@ -20,6 +20,15 @@ public class ComplianceDTO {
     private String environment;
     private String softwareName;
 
+    /** PREVOBS ou COLLECTE_WINDOWS. */
+    private String source;
+
+    /** Role du composant sur le serveur (actif, copie inactive, embarque DIW, constat...). */
+    private String role;
+
+    /** Precisions de la collecte (editeur, nombre de copies, constat). */
+    private String details;
+
     /** Version relevee par Prevobs sur le serveur. */
     private String installedVersion;
 

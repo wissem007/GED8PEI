@@ -197,7 +197,16 @@ export default function Compliance() {
                     <TableRow key={`${row.serverName}-${row.softwareName}-${index}`} hover>
                       <TableCell sx={{ fontFamily: 'monospace' }}>{row.serverName}</TableCell>
                       <TableCell>{row.environment || '-'}</TableCell>
-                      <TableCell>{row.softwareName}</TableCell>
+                      <TableCell>
+                        <Tooltip title={row.details || ''}>
+                          <span>
+                            {row.softwareName}
+                            {row.source === 'COLLECTE_WINDOWS' && (
+                              <Chip label={row.role ? 'Collecte : ' + row.role : 'Collecte'} size="small" color="secondary" variant="outlined" sx={{ ml: 1 }} />
+                            )}
+                          </span>
+                        </Tooltip>
+                      </TableCell>
                       <TableCell>
                         <Chip size="small" label={row.installedVersion || '-'} />
                         {row.csrVersion && row.csrVersion !== row.installedVersion && (

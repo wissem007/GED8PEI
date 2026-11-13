@@ -128,6 +128,15 @@ export const serverObsolescenceAPI = {
     });
   },
   clearAll: () => api.delete('/server-obsolescence/clear-all'),
+  clearSource: (source) => api.delete(`/server-obsolescence/clear-source/${source}`),
+  // Rapports du script collecte-windows-lecture-seule.ps1 (un .txt par serveur)
+  importWindows: (files) => {
+    const formData = new FormData();
+    Array.from(files).forEach((f) => formData.append('files', f));
+    return api.post('/server-obsolescence/import-windows', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
 };
 
 // Alerts API (alertes de conformite)

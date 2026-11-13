@@ -3,6 +3,7 @@ package com.edf.gedpei.controller;
 import com.edf.gedpei.dto.ServerSoftwareObsolescenceDTO;
 import com.edf.gedpei.entity.ServerSoftwareObsolescence.ObsolescenceStatus;
 import com.edf.gedpei.service.ServerSoftwareObsolescenceService;
+import com.edf.gedpei.service.WindowsCollectImportService;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -24,7 +25,32 @@ import java.util.stream.Collectors;
 public class ServerSoftwareObsolescenceController {
 
     private final ServerSoftwareObsolescenceService service;
+    private final WindowsCollectImportService windowsCollectImportService;
     private final EntityManager entityManager;
+
+    /**
+     * Importe un ou plusieurs rapports du script collecte-windows-lecture-seule.ps1
+     * (fichiers audit-gedpei-SERVEUR-date.txt). Remplace la collecte precedente
+     * de chaque serveur, sans toucher aux lignes Prevobs.
+     */
+    @PostMapping("/import-windows")
+    public ResponseEntity<Map<String, Object>> importWindows(@RequestParam("files") List<MultipartFile> files) {
+        List<MultipartFile> nonEmpty = files.stream().filter(f -> !f.isEmpty()).toList();
+        if (nonEmpty.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Aucun fichier"));
+        }
+        return ResponseEntity.ok(windowsCollectImportService.importFiles(nonEmpty));
+    }
+
+    /**
+     * Vide une seule source (PREVOBS ou COLLECTE_WINDOWS), pour recharger l'une
+     * sans perdre l'autre.
+     */
+    @DeleteMapping("/clear-source/{source}")
+    public ResponseEntity<Map<String, Object>> clearSource(@PathVariable String source) {
+        long count = service.clearSource(source.toUpperCase());
+        return ResponseEntity.ok(Map.of("deleted", count, "source", source.toUpperCase()));
+    }
 
     /**
      * Recupere toutes les donnees d'obsolescence.

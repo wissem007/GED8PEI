@@ -181,6 +181,16 @@ public class ServerSoftwareObsolescenceService {
     }
 
     /**
+     * Supprime les lignes d'une seule source (PREVOBS ou COLLECTE_WINDOWS).
+     */
+    @Transactional
+    public long clearSource(String source) {
+        int count = repository.deleteBySource(source);
+        log.info("Suppression de {} lignes d'obsolescence de source {}", count, source);
+        return count;
+    }
+
+    /**
      * Recreer la table avec les bons types de colonnes.
      */
     @Transactional
@@ -204,6 +214,10 @@ public class ServerSoftwareObsolescenceService {
                 "os_target VARCHAR(100), " +
                 "os_actual_target_version VARCHAR(100), " +
                 "os_target_solution_version VARCHAR(100), " +
+                "source VARCHAR(30), " +
+                "install_path TEXT, " +
+                "details TEXT, " +
+                "collected_at DATE, " +
                 "created_at TIMESTAMP, " +
                 "updated_at TIMESTAMP)"
             ).executeUpdate();
@@ -255,6 +269,7 @@ public class ServerSoftwareObsolescenceService {
 
             for (ServerSoftwareObsolescence entry : entries) {
                 try {
+                    entry.setSource("PREVOBS");
                     repository.save(entry);
                     imported++;
                 } catch (Exception e) {

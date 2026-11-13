@@ -22,6 +22,30 @@ const statusColors = {
   INTERDITE: { bg: '#ffebee', color: '#c62828', icon: ErrorIcon },
   INTERDITE_CYBER: { bg: '#fce4ec', color: '#ad1457', icon: ErrorIcon },
   OBSOLETE: { bg: '#f5f5f5', color: '#616161', icon: ErrorIcon },
+  NON_REFERENCEE: { bg: '#eceff1', color: '#455a64', icon: InfoIcon },
+};
+
+// Origine de la ligne : Prevobs (scan Inventiv) ou rapport de collecte Windows lu sur le serveur
+const SourceCell = ({ item }) => {
+  const windows = item.source === 'COLLECTE_WINDOWS';
+  const tip = [
+    windows ? `Collecte du ${item.collectedAt || '?'}` : 'Extraction Prevobs',
+    item.details,
+    item.installPath,
+  ].filter(Boolean).join('\n');
+  return (
+    <Tooltip title={<span style={{ whiteSpace: 'pre-line' }}>{tip}</span>}>
+      <Box display="flex" gap={0.5} flexWrap="wrap">
+        <Chip
+          label={windows ? 'Collecte' : 'Prevobs'}
+          size="small"
+          color={windows ? 'secondary' : 'default'}
+          variant="outlined"
+        />
+        {windows && item.instance && <Chip label={item.instance} size="small" />}
+      </Box>
+    </Tooltip>
+  );
 };
 
 function ServerObsolescence() {
@@ -35,6 +59,8 @@ function ServerObsolescence() {
   const [stats, setStats] = useState({});
   const [importDialog, setImportDialog] = useState(false);
   const [importFile, setImportFile] = useState(null);
+  const [importMode, setImportMode] = useState(0); // 0 = Prevobs, 1 = collecte Windows
+  const [windowsFiles, setWindowsFiles] = useState([]);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const [error, setError] = useState(null);
@@ -89,12 +115,14 @@ function ServerObsolescence() {
   };
 
   const handleImport = async () => {
-    if (!importFile) return;
+    if (importMode === 0 ? !importFile : windowsFiles.length === 0) return;
 
     setImporting(true);
     setImportResult(null);
     try {
-      const response = await serverObsolescenceAPI.importCsv(importFile);
+      const response = importMode === 1
+        ? await serverObsolescenceAPI.importWindows(windowsFiles)
+        : await serverObsolescenceAPI.importCsv(importFile);
       setImportResult(response.data);
       fetchData();
       fetchMetadata();
@@ -107,9 +135,11 @@ function ServerObsolescence() {
   };
 
   const handleClearAll = async () => {
-    if (!window.confirm('Supprimer toutes les donnees d\'obsolescence ?')) return;
+    // Seules les lignes Prevobs sont videes : une collecte Windows est remplacee
+    // automatiquement a chaque nouvel import du meme serveur.
+    if (!window.confirm('Supprimer les donnees Prevobs avant un nouvel import ? (les collectes Windows sont conservees)')) return;
     try {
-      await serverObsolescenceAPI.clearAll();
+      await serverObsolescenceAPI.clearSource('PREVOBS');
       fetchData();
       fetchMetadata();
     } catch (err) {
@@ -222,6 +252,7 @@ function ServerObsolescence() {
                           <TableRow sx={{ bgcolor: 'grey.100' }}>
                             <TableCell width={150}><strong>Statut</strong></TableCell>
                             <TableCell><strong>Logiciel</strong></TableCell>
+                            <TableCell><strong>Source / role</strong></TableCell>
                             <TableCell><strong>Version</strong></TableCell>
                             <TableCell><strong>Fin Support</strong></TableCell>
                             <TableCell><strong>OS Cible</strong></TableCell>
@@ -253,6 +284,7 @@ function ServerObsolescence() {
                                   </TableCell>
                                 )}
                                 <TableCell>{item.softwareName}</TableCell>
+                                <TableCell><SourceCell item={item} /></TableCell>
                                 <TableCell>
                                   <Chip label={item.currentVersion || '-'} size="small" variant="outlined" />
                                 </TableCell>
@@ -293,6 +325,7 @@ function ServerObsolescence() {
             <TableCell><strong>Serveur</strong></TableCell>
             <TableCell><strong>Statut</strong></TableCell>
             <TableCell><strong>Logiciel</strong></TableCell>
+            <TableCell><strong>Source / role</strong></TableCell>
             <TableCell><strong>Version</strong></TableCell>
             <TableCell><strong>Fin Support</strong></TableCell>
             <TableCell><strong>OS Cible</strong></TableCell>
@@ -302,13 +335,13 @@ function ServerObsolescence() {
         <TableBody>
           {loading ? (
             <TableRow>
-              <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
+              <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
                 <CircularProgress />
               </TableCell>
             </TableRow>
           ) : data.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
+              <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
                 <Typography color="text.secondary">
                   Aucune donnee trouvee
                 </Typography>
@@ -327,6 +360,7 @@ function ServerObsolescence() {
                 <TableCell><strong>{item.serverName}</strong></TableCell>
                 <TableCell>{getStatusChip(item.status)}</TableCell>
                 <TableCell>{item.softwareName}</TableCell>
+                <TableCell><SourceCell item={item} /></TableCell>
                 <TableCell>
                   <Chip label={item.currentVersion || '-'} size="small" variant="outlined" />
                 </TableCell>
@@ -363,7 +397,7 @@ function ServerObsolescence() {
             onClick={handleClearAll}
             sx={{ mr: 1 }}
           >
-            Vider
+            Vider Prevobs
           </Button>
           <Button
             variant="contained"
@@ -487,7 +521,13 @@ function ServerObsolescence() {
       <Dialog open={importDialog} onClose={() => setImportDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Importer les donnees d'obsolescence</DialogTitle>
         <DialogContent>
+          <Tabs value={importMode} onChange={(_, v) => { setImportMode(v); setImportResult(null); }} sx={{ mb: 1 }}>
+            <Tab label="Prevobs (Linux + OS)" />
+            <Tab label="Collecte Windows (.txt)" />
+          </Tabs>
           <Box sx={{ mt: 2 }}>
+            {importMode === 0 ? (
+            <>
             <Alert severity="info" sx={{ mb: 2 }}>
               <Typography variant="body2">
                 <strong>Fichier attendu :</strong> extraction Prevobs / PMT DISCOVR, en .xlsx ou .csv.<br />
@@ -522,6 +562,41 @@ function ServerObsolescence() {
                 {importFile ? importFile.name : 'Cliquez pour selectionner un fichier (.xlsx ou .csv)'}
               </Typography>
             </Box>
+            </>
+            ) : (
+            <>
+            <Alert severity="info" sx={{ mb: 2 }}>
+              <Typography variant="body2">
+                <strong>Fichiers attendus :</strong> rapports <code>audit-gedpei-SERVEUR-date.txt</code> produits
+                par le script <code>collecte-windows-lecture-seule.ps1</code> (un par serveur, plusieurs a la fois).<br />
+                Chaque import remplace la collecte precedente du serveur ; les lignes Prevobs ne sont pas touchees.
+                Les statuts sont rapproches du referentiel CSR (page Versions logiciels) : importez le CSR d'abord.
+              </Typography>
+            </Alert>
+            <Box
+              sx={{
+                border: '2px dashed', borderColor: 'grey.400', borderRadius: 2, p: 3,
+                textAlign: 'center', bgcolor: 'grey.50', cursor: 'pointer',
+                '&:hover': { borderColor: 'primary.main', bgcolor: 'grey.100' },
+              }}
+              component="label"
+            >
+              <input
+                type="file"
+                accept=".txt"
+                multiple
+                onChange={(e) => { setWindowsFiles(Array.from(e.target.files || [])); setImportResult(null); }}
+                style={{ display: 'none' }}
+              />
+              <UploadIcon sx={{ fontSize: 48, color: 'grey.500', mb: 1 }} />
+              <Typography>
+                {windowsFiles.length > 0
+                  ? `${windowsFiles.length} fichier(s) : ${windowsFiles.map((f) => f.name).join(', ')}`
+                  : 'Cliquez pour selectionner les rapports .txt'}
+              </Typography>
+            </Box>
+            </>
+            )}
 
             {importResult && (
               <Alert
@@ -535,6 +610,13 @@ function ServerObsolescence() {
                     <strong>Import termine !</strong><br />
                     {importResult.imported} entrees importees
                     {importResult.errors > 0 && `, ${importResult.errors} erreurs`}
+                    {importResult.servers?.map((srv) => (
+                      <div key={srv.server}>
+                        {srv.server} ({srv.environment || '?'}) : {srv.components} composants
+                        {srv.replaced > 0 && `, ${srv.replaced} lignes de la collecte precedente remplacees`}
+                      </div>
+                    ))}
+                    {importResult.errorMessages?.map((m) => <div key={m}>{m}</div>)}
                   </>
                 )}
               </Alert>
@@ -546,7 +628,7 @@ function ServerObsolescence() {
           <Button
             variant="contained"
             onClick={handleImport}
-            disabled={!importFile || importing}
+            disabled={(importMode === 0 ? !importFile : windowsFiles.length === 0) || importing}
             startIcon={importing ? <CircularProgress size={20} /> : <UploadIcon />}
           >
             {importing ? 'Import en cours...' : 'Importer'}

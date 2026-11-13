@@ -27,6 +27,10 @@ public class ServerSoftwareObsolescenceDTO {
     private String osTarget;
     private String osActualTargetVersion;
     private String osTargetSolutionVersion;
+    private String source;
+    private String installPath;
+    private String details;
+    private java.time.LocalDate collectedAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -50,6 +54,10 @@ public class ServerSoftwareObsolescenceDTO {
                 .osTarget(entity.getOsTarget())
                 .osActualTargetVersion(entity.getOsActualTargetVersion())
                 .osTargetSolutionVersion(entity.getOsTargetSolutionVersion())
+                .source(entity.getSource() != null ? entity.getSource() : "PREVOBS")
+                .installPath(entity.getInstallPath())
+                .details(entity.getDetails())
+                .collectedAt(entity.getCollectedAt())
                 .createdAt(entity.getCreatedAt())
                 .updatedAt(entity.getUpdatedAt())
                 .build();

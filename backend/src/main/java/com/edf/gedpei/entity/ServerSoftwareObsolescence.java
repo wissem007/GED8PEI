@@ -57,6 +57,25 @@ public class ServerSoftwareObsolescence {
     @Column(name = "os_target_solution_version", columnDefinition = "VARCHAR(100)")
     private String osTargetSolutionVersion;
 
+    /**
+     * Origine de la ligne : PREVOBS (extraction PMT DISCOVR, valeur par defaut)
+     * ou COLLECTE_WINDOWS (rapport du script de collecte lu sur le serveur).
+     */
+    @Column(name = "source", columnDefinition = "VARCHAR(30)")
+    private String source;
+
+    /** Repertoire(s) d'installation, pour la collecte Windows. */
+    @Column(name = "install_path", columnDefinition = "TEXT")
+    private String installPath;
+
+    /** Precisions : editeur, nombre de copies, constat de configuration. */
+    @Column(name = "details", columnDefinition = "TEXT")
+    private String details;
+
+    /** Date de la collecte sur le serveur (et non de l'import). */
+    @Column(name = "collected_at")
+    private java.time.LocalDate collectedAt;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
@@ -84,7 +103,8 @@ public class ServerSoftwareObsolescence {
         RISQUEE("Risquee", "#ff5722"),
         INTERDITE("Interdite", "#f44336"),
         INTERDITE_CYBER("Interdite Cyber", "#d32f2f"),
-        OBSOLETE("Obsolete", "#9e9e9e");
+        OBSOLETE("Obsolete", "#9e9e9e"),
+        NON_REFERENCEE("Non referencee CSR", "#607d8b");
 
         private final String displayName;
         private final String color;

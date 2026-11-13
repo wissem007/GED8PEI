@@ -3,6 +3,7 @@ package com.edf.gedpei.service;
 import com.edf.gedpei.dto.ComplianceDTO;
 import com.edf.gedpei.dto.ComplianceDTO.Verdict;
 import com.edf.gedpei.entity.ServerSoftwareObsolescence;
+import com.edf.gedpei.entity.ServerSoftwareObsolescence.ObsolescenceStatus;
 import com.edf.gedpei.entity.SoftwareVersion;
 import com.edf.gedpei.entity.SoftwareVersion.VersionStatus;
 import com.edf.gedpei.repository.ServerSoftwareObsolescenceRepository;
@@ -86,10 +87,24 @@ public class ComplianceService {
                 .serverName(installed.getServerName())
                 .environment(installed.getEnvironment())
                 .softwareName(installed.getSoftwareName())
+                .source(installed.getSource() != null ? installed.getSource() : "PREVOBS")
+                .role(installed.getInstance())
+                .details(installed.getDetails())
                 .installedVersion(installed.getCurrentVersion());
+
+        // Constats de configuration de la collecte Windows (FTP, certificat, AJP...) :
+        // pas de produit CSR, le statut porte deja le verdict.
+        if ("constat".equals(installed.getInstance())) {
+            return row.verdict(verdictOfStatus(installed.getStatus())).csrStatus(installed.getStatus().getDisplayName())
+                    .build();
+        }
 
         List<SoftwareVersion> versions = catalogue.get(normalizeName(installed.getSoftwareName()));
         if (versions == null || versions.isEmpty()) {
+            // Produit absent du CSR : une fin de vie relevee par la collecte reste a corriger.
+            if (installed.getStatus() == ObsolescenceStatus.OBSOLETE) {
+                return row.verdict(Verdict.A_CORRIGER).csrStatus(installed.getStatus().getDisplayName()).build();
+            }
             return row.verdict(Verdict.HORS_CSR).build();
         }
 
@@ -111,6 +126,10 @@ public class ComplianceService {
 
         SoftwareVersion current = matchVersion(installed.getCurrentVersion(), versions);
         if (current == null) {
+            // Version absente du CSR mais connue en fin de vie a la collecte (JRE 6/7/8, Tomcat 7...).
+            if (installed.getStatus() == ObsolescenceStatus.OBSOLETE) {
+                return row.verdict(Verdict.A_CORRIGER).csrStatus(installed.getStatus().getDisplayName()).build();
+            }
             return row.verdict(Verdict.VERSION_INCONNUE).build();
         }
 
@@ -125,6 +144,31 @@ public class ComplianceService {
                 .upgradeNeeded(upgradeNeeded)
                 .verdict(verdictOf(current.getStatus(), expired))
                 .build();
+    }
+
+    /**
+     * Rapproche un couple (produit, version) du referentiel CSR. Sert a la collecte
+     * Windows pour poser le statut des composants au moment de l'import.
+     */
+    @Transactional(readOnly = true)
+    public java.util.Optional<SoftwareVersion> findCatalogueVersion(String softwareName, String version) {
+        List<SoftwareVersion> versions = softwareVersionRepository.findAll().stream()
+                .filter(v -> v.getSoftwareName() != null
+                        && normalizeName(v.getSoftwareName()).equals(normalizeName(softwareName)))
+                .toList();
+        if (versions.isEmpty()) return java.util.Optional.empty();
+        return java.util.Optional.ofNullable(matchVersion(version, versions));
+    }
+
+    private Verdict verdictOfStatus(ObsolescenceStatus status) {
+        if (status == null) return Verdict.VERSION_INCONNUE;
+        return switch (status) {
+            case INTERDITE_CYBER -> Verdict.CRITIQUE;
+            case INTERDITE, OBSOLETE -> Verdict.A_CORRIGER;
+            case RISQUEE, TOLEREE -> Verdict.A_SURVEILLER;
+            case PRECONISEE, TRAJECTOIRE_PRECONISEE -> Verdict.CONFORME;
+            case NON_REFERENCEE -> Verdict.HORS_CSR;
+        };
     }
 
     private Verdict verdictOf(VersionStatus status, boolean supportExpired) {

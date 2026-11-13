@@ -3,6 +3,7 @@ package com.edf.gedpei.repository;
 import com.edf.gedpei.entity.ServerSoftwareObsolescence;
 import com.edf.gedpei.entity.ServerSoftwareObsolescence.ObsolescenceStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -47,6 +48,16 @@ public interface ServerSoftwareObsolescenceRepository extends JpaRepository<Serv
             @Param("softwareName") String softwareName);
 
     void deleteByServerName(String serverName);
+
+    /** Remplace la derniere collecte d'un serveur sans toucher aux lignes Prevobs. */
+    @Modifying
+    @Query("DELETE FROM ServerSoftwareObsolescence s WHERE LOWER(s.serverName) = LOWER(:serverName) AND s.source = :source")
+    int deleteByServerNameAndSource(@Param("serverName") String serverName, @Param("source") String source);
+
+    /** Vide une seule source : PREVOBS couvre aussi les lignes anterieures sans source. */
+    @Modifying
+    @Query("DELETE FROM ServerSoftwareObsolescence s WHERE s.source = :source OR (:source = 'PREVOBS' AND s.source IS NULL)")
+    int deleteBySource(@Param("source") String source);
 
     void deleteByEnvironment(String environment);
 }
