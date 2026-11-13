@@ -265,6 +265,10 @@ public class SoftwareVersionService {
 
         ColumnMapping mapping = detectColumnMapping(headerMap);
 
+        // Le CSR repete la roadmap sur chaque ligne de package : on cumule les packages
+        // de la roadmap au fil du fichier (un import remplace la liste precedente).
+        Map<String, LinkedHashMap<String, String>> packagesByRoadmap = new HashMap<>();
+
         for (int lineNum = 1; lineNum < rows.size(); lineNum++) {
             String[] record = rows.get(lineNum);
             if (SpreadsheetReader.isBlank(record)) continue;
@@ -274,6 +278,19 @@ public class SoftwareVersionService {
                 if (version == null || version.getSoftwareName() == null
                         || version.getSoftwareName().isBlank()) {
                     continue;
+                }
+
+                String roadmapKey = (version.getSoftwareName() + "|" + version.getVersion()).toUpperCase();
+                LinkedHashMap<String, String> packages =
+                        packagesByRoadmap.computeIfAbsent(roadmapKey, k -> new LinkedHashMap<>());
+                if (version.getPackageStatuses() != null) {
+                    String[] parts = version.getPackageStatuses().split("\t", 2);
+                    packages.put(parts[0], parts[1]);
+                }
+                if (!packages.isEmpty()) {
+                    StringBuilder joined = new StringBuilder();
+                    packages.forEach((pkg, st) -> joined.append(pkg).append('\t').append(st).append('\n'));
+                    version.setPackageStatuses(joined.toString().trim());
                 }
 
                 Optional<SoftwareVersion> existing = softwareVersionRepository
@@ -375,7 +392,9 @@ public class SoftwareVersionService {
             int index = entry.getValue();
 
             // Format Sipedia - CSR Detail des versions (prioritaire)
-            if (header.contains("libelle") && header.contains("solution")) {
+            if (header.contains("statut") && header.contains("package")) {
+                mapping.packageStatusIndex = index;
+            } else if (header.contains("libelle") && header.contains("solution")) {
                 mapping.softwareNameIndex = index;
             } else if (header.contains("version") && header.contains("roadmap") && !header.contains("statut")) {
                 mapping.versionIndex = index;
@@ -448,6 +467,10 @@ public class SoftwareVersionService {
             // Extraire la version package (partie avant les URLs)
             String cleanPackageVersion = extractPackageVersion(versionPackage);
             version.setPackageVersion(cleanPackageVersion);
+            String packageStatus = getField(record, mapping.packageStatusIndex);
+            if (cleanPackageVersion != null && packageStatus != null) {
+                version.setPackageStatuses(cleanPackageVersion + "\t" + packageStatus);
+            }
         }
 
         String statusStr = getField(record, mapping.statusIndex);
@@ -459,7 +482,7 @@ public class SoftwareVersionService {
         version.setCyberSupportEndDate(parseDate(getField(record, mapping.cyberSupportIndex)));
 
         if (mapping.notesIndex >= 0) {
-            version.setNotes(getField(record, mapping.notesIndex));
+            version.setNotes(truncate(getField(record, mapping.notesIndex), 2000));
         }
 
         // Collecter tous les liens utiles
@@ -536,6 +559,10 @@ public class SoftwareVersionService {
         return versionStr;
     }
 
+    private static String truncate(String value, int max) {
+        return value == null || value.length() <= max ? value : value.substring(0, max);
+    }
+
     private String getField(String[] record, int index) {
         if (index < 0 || index >= record.length) return null;
         String value = record[index];
@@ -556,6 +583,9 @@ public class SoftwareVersionService {
 
     private void updateEntity(SoftwareVersion existing, SoftwareVersion newData) {
         existing.setStatus(newData.getStatus());
+        if (newData.getPackageStatuses() != null) {
+            existing.setPackageStatuses(newData.getPackageStatuses());
+        }
         if (newData.getPackageVersion() != null) {
             existing.setPackageVersion(newData.getPackageVersion());
         }
@@ -649,6 +679,7 @@ public class SoftwareVersionService {
         int notesIndex = -1;
         int vendorIndex = -1;
         int usefulLinksIndex = -1;
+        int packageStatusIndex = -1;
     }
 
     /**

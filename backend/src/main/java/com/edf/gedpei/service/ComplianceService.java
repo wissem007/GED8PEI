@@ -120,7 +120,10 @@ public class ComplianceService {
                 .orElse(null);
 
         if (target != null) {
-            row.targetVersion(target.getVersion())
+            String recommendedPackage = recommendedPackage(target);
+            row.targetVersion(recommendedPackage != null
+                            ? target.getVersion() + " (" + recommendedPackage + ")"
+                            : target.getVersion())
                     .targetSupportEndDate(target.getInitialSupportEndDate());
         }
 
@@ -136,6 +139,21 @@ public class ComplianceService {
         boolean expired = current.getInitialSupportEndDate() != null
                 && current.getInitialSupportEndDate().isBefore(LocalDate.now());
         boolean upgradeNeeded = target != null && !target.getVersion().equals(current.getVersion());
+
+        // Le statut du package exact prime sur celui de la roadmap : Tomcat 9.0 est toleree
+        // mais le package 9.0.104 est interdit cyber.
+        java.util.Optional<PackageMatch> pkg = matchPackage(current, installed.getCurrentVersion());
+        if (pkg.isPresent()) {
+            PackageMatch m = pkg.get();
+            Verdict verdict = verdictOfStatus(ObsolescenceStatus.fromString(m.status()));
+            return row.csrVersion(current.getVersion() + " / " + m.packageVersion() + (m.exact() ? "" : " (le plus proche)"))
+                    .csrStatus(m.status() + (m.exact() ? " (package)" : " (package le plus proche)"))
+                    .supportEndDate(current.getInitialSupportEndDate())
+                    .supportExpired(expired)
+                    .upgradeNeeded(upgradeNeeded || verdict != Verdict.CONFORME)
+                    .verdict(verdict)
+                    .build();
+        }
 
         return row.csrVersion(current.getVersion())
                 .csrStatus(current.getStatus() != null ? current.getStatus().getDisplayName() : null)
@@ -158,6 +176,85 @@ public class ComplianceService {
                 .toList();
         if (versions.isEmpty()) return java.util.Optional.empty();
         return java.util.Optional.ofNullable(matchVersion(version, versions));
+    }
+
+    /** Package CSR rapproche d'une version installee. */
+    public record PackageMatch(String packageVersion, String status, boolean exact) {}
+
+    /**
+     * Rapproche la version installee des packages de la roadmap : d'abord le package
+     * exact, sinon le package reference juste en dessous (9.0.122 face a 9.0.121), qui
+     * porte l'etat de securite connu le plus proche. Vide si la roadmap n'a pas de packages.
+     */
+    public java.util.Optional<PackageMatch> matchPackage(SoftwareVersion roadmap, String installedVersion) {
+        if (roadmap == null || roadmap.getPackageStatuses() == null || installedVersion == null) {
+            return java.util.Optional.empty();
+        }
+        String installed = normalizeVersion(installedVersion);
+        List<String[]> packages = new ArrayList<>();
+        for (String line : roadmap.getPackageStatuses().split("\n")) {
+            String[] parts = line.split("\t", 2);
+            if (parts.length == 2 && !parts[0].isBlank()) packages.add(parts);
+        }
+        for (String[] p : packages) {
+            String pkg = normalizeVersion(p[0]);
+            // La collecte note Java 8 en 8.0.265 la ou le CSR ecrit 1.8.0.265.
+            if (pkg.equals(installed) || pkg.equals("1." + installed)) {
+                return java.util.Optional.of(new PackageMatch(p[0], p[1], true));
+            }
+        }
+        List<Integer> target = numbers(installed.startsWith("8.0.") ? "1." + installed : installed);
+        if (target.isEmpty()) return java.util.Optional.empty();
+        String[] best = null;
+        List<Integer> bestNumbers = null;
+        for (String[] p : packages) {
+            List<Integer> n = numbers(normalizeVersion(p[0]));
+            if (n.isEmpty() || compareNumbers(n, target) >= 0) continue;
+            if (n.size() != target.size() && n.size() < 3) continue;
+            if (bestNumbers == null || compareNumbers(n, bestNumbers) > 0) {
+                best = p;
+                bestNumbers = n;
+            }
+        }
+        return best == null ? java.util.Optional.empty()
+                : java.util.Optional.of(new PackageMatch(best[0], best[1], false));
+    }
+
+    /** Package preconise le plus recent d'une roadmap (affiche comme cible). */
+    private String recommendedPackage(SoftwareVersion roadmap) {
+        if (roadmap.getPackageStatuses() == null) return null;
+        String best = null;
+        List<Integer> bestNumbers = null;
+        for (String line : roadmap.getPackageStatuses().split("\n")) {
+            String[] parts = line.split("\t", 2);
+            if (parts.length != 2 || ObsolescenceStatus.fromString(parts[1]) != ObsolescenceStatus.PRECONISEE) continue;
+            List<Integer> n = numbers(normalizeVersion(parts[0]));
+            if (best == null || compareNumbers(n, bestNumbers) > 0) {
+                best = parts[0];
+                bestNumbers = n;
+            }
+        }
+        return best;
+    }
+
+    private static List<Integer> numbers(String version) {
+        List<Integer> out = new ArrayList<>();
+        for (String part : version.split("[^0-9]+")) {
+            if (part.isEmpty()) continue;
+            try {
+                out.add(Integer.parseInt(part.length() > 9 ? part.substring(0, 9) : part));
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return out;
+    }
+
+    private static int compareNumbers(List<Integer> a, List<Integer> b) {
+        for (int i = 0; i < Math.min(a.size(), b.size()); i++) {
+            int c = Integer.compare(a.get(i), b.get(i));
+            if (c != 0) return c;
+        }
+        return Integer.compare(a.size(), b.size());
     }
 
     private Verdict verdictOfStatus(ObsolescenceStatus status) {

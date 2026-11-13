@@ -53,6 +53,14 @@ public class SoftwareVersion {
     private String notes;
 
     /**
+     * Statut CSR de chaque version de package de cette roadmap (colonne Sipedia
+     * "Statut du package"), une ligne par package : "version<TAB>statut".
+     * Une roadmap toleree peut contenir des packages interdits cyber (Tomcat 9.0.104).
+     */
+    @Column(name = "package_statuses", columnDefinition = "TEXT")
+    private String packageStatuses;
+
+    /**
      * Liens utiles au format JSON: [{"label": "...", "url": "..."}]
      */
     @Column(name = "useful_links", columnDefinition = "TEXT")

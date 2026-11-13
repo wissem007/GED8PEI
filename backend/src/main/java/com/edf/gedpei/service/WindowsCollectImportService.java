@@ -103,7 +103,9 @@ public class WindowsCollectImportService {
             Optional<SoftwareVersion> csr = complianceService.findCatalogueVersion(c.softwareName(), c.version());
             if (csr.isPresent()) {
                 SoftwareVersion v = csr.get();
-                status = ObsolescenceStatus.fromString(v.getStatus().name());
+                status = complianceService.matchPackage(v, c.version())
+                        .map(m -> ObsolescenceStatus.fromString(m.status()))
+                        .orElse(ObsolescenceStatus.fromString(v.getStatus().name()));
                 if (v.getCyberSupportEndDate() != null) supportEnd = v.getCyberSupportEndDate().format(FR_DATE);
                 else if (v.getInitialSupportEndDate() != null) supportEnd = v.getInitialSupportEndDate().format(FR_DATE);
                 target = v.getVersion();
